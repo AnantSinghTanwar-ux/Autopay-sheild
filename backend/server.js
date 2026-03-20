@@ -8,6 +8,7 @@ const { seedDemoUsers } = require('./src/utils/seedDemoData');
 
 const app = express();
 const mongoUri = process.env.MONGODB_URI || 'mongodb://localhost:27017/autopay-shield';
+const useMockFallback = (process.env.USE_MOCK_DB_FALLBACK || 'true').toLowerCase() === 'true';
 
 let cachedConnectionPromise = null;
 
@@ -46,6 +47,10 @@ app.use(async (req, res, next) => {
     await connectToDatabase();
     next();
   } catch (err) {
+    if (useMockFallback && req.path.startsWith('/api/auth')) {
+      return next();
+    }
+
     res.status(500).json({
       message: 'Database connection failed',
       error: err.message
