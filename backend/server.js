@@ -43,6 +43,11 @@ app.use(express.json());
 
 // Ensure DB is ready before API routes in serverless/runtime contexts.
 app.use(async (req, res, next) => {
+  if (useMockFallback && req.path.startsWith('/api/auth') && mongoose.connection.readyState !== 1) {
+    // In fallback mode, auth should not wait on a potentially slow/unavailable DB.
+    return next();
+  }
+
   try {
     await connectToDatabase();
     next();
