@@ -38,15 +38,17 @@ app.use((req, res) => {
 // Error handler
 app.use(errorHandler);
 
-const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => {
-  console.log(`\n🚀 AutoPay Shield Backend running on http://localhost:${PORT}`);
-  console.log(`📚 API Documentation:`);
-  console.log(`   POST   /api/auth/register  - Register new user`);
-  console.log(`   POST   /api/auth/login     - Login user`);
-  console.log(`   POST   /api/policy/create  - Create weekly policy`);
-  console.log(`   GET    /api/policy/active  - Get active policy`);
-  console.log(`   POST   /api/claim/test-trigger - Test claim trigger\n`);
-});
+if (require.main === module) {
+  const PORT = process.env.PORT || 5000;
+  app.listen(PORT, () => {
+    console.log(`\n🚀 AutoPay Shield Backend running on http://localhost:${PORT}`);
+    console.log(`📚 API Documentation:`);
+    console.log(`   POST   /api/auth/register  - Register new user`);
+    console.log(`   POST   /api/auth/login     - Login user`);
+    console.log(`   POST   /api/policy/create  - Create weekly policy`);
+    console.log(`   GET    /api/policy/active  - Get active policy`);
+    console.log(`   POST   /api/claim/test-trigger - Test claim trigger\n`);
+  });
+}
 
 module.exports = app;
