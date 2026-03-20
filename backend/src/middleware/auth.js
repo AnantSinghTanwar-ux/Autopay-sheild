@@ -1,5 +1,7 @@
 const jwt = require('jsonwebtoken');
 const mongoose = require('mongoose');
+const JWT_SECRET = process.env.JWT_SECRET || 'autopay-shield-fallback-secret';
+const USE_MOCK_FALLBACK = (process.env.USE_MOCK_DB_FALLBACK || 'true').toLowerCase() === 'true';
 
 // Middleware to verify JWT token
 const authenticate = (req, res, next) => {
@@ -10,10 +12,10 @@ const authenticate = (req, res, next) => {
       return res.status(401).json({ message: 'No token provided' });
     }
     
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const decoded = jwt.verify(token, JWT_SECRET);
 
     // Guard against stale tokens created before MongoDB migration (e.g., demo-user-1)
-    if (!mongoose.Types.ObjectId.isValid(decoded.userId)) {
+    if (!USE_MOCK_FALLBACK && !mongoose.Types.ObjectId.isValid(decoded.userId)) {
       return res.status(401).json({ message: 'Session expired. Please log in again.' });
     }
 

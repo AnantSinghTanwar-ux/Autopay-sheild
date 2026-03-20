@@ -1,11 +1,12 @@
 const jwt = require('jsonwebtoken');
 const { predictExpectedIncome } = require('../services/incomeDnaService');
+const JWT_SECRET = process.env.JWT_SECRET || 'autopay-shield-fallback-secret';
 
 // Generate JWT token
 const generateToken = (userId) => {
   return jwt.sign(
     { userId },
-    process.env.JWT_SECRET,
+    JWT_SECRET,
     { expiresIn: '7d' }
   );
 };
