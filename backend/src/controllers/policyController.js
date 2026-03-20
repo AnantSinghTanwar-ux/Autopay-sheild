@@ -1,14 +1,78 @@
 const Policy = require('../models/Policy');
 const User = require('../models/User');
+const mongoose = require('mongoose');
 const { calculateWeeklyPremium } = require('../utils/helpers');
 const { getLiveRiskFactors, STRICT_LOCATION_VERIFICATION } = require('../services/weatherService');
 const { evaluateNetworkRisk, STRICT_VPN_CHECK } = require('../utils/networkRiskService');
 const { calculateRiskScore } = require('../services/triggerIntelligenceService');
+const { findUserById, updateUser, createPolicy: createMockPolicy, getPolicyByUserId } = require('../mockDatabase');
+
+const USE_MOCK_FALLBACK = (process.env.USE_MOCK_DB_FALLBACK || 'true').toLowerCase() === 'true';
+const isMongoConnected = () => mongoose.connection.readyState === 1;
 
 // Calculate and create weekly policy
 exports.createPolicy = async (req, res) => {
   try {
     const userId = req.userId;
+
+    if (!isMongoConnected() && USE_MOCK_FALLBACK) {
+      const user = findUserById(userId);
+      if (!user) {
+        return res.status(404).json({ message: 'User not found' });
+      }
+
+      const riskFactors = {
+        weatherRisk: 48,
+        pollutionRisk: 44,
+        demandRisk: 46,
+        locationRisk: 35
+      };
+
+      const weeklyPremium = calculateWeeklyPremium(riskFactors);
+      const weeklyEarnings = (user.averageEarningsPerHour || 300) * 7 * 10;
+      const coverageAmount = Math.round(weeklyEarnings * 0.3);
+      const startDate = new Date();
+      const endDate = new Date(startDate.getTime() + 7 * 24 * 60 * 60 * 1000);
+
+      const policy = createMockPolicy({
+        userId,
+        weeklyPremium,
+        coverageAmount,
+        riskBreakdown: riskFactors,
+        coverageHours: user.workingHours || { start: 9, end: 22 },
+        startDate,
+        endDate,
+        paymentStatus: 'paid',
+        externalRiskContext: {
+          source: 'mock-fallback',
+          locationVerification: { status: 'pending' },
+          vpnVerification: { status: 'pending' }
+        }
+      });
+
+      updateUser(userId, { activePolicy: policy._id, riskScore: 45 });
+
+      return res.status(201).json({
+        message: 'Policy created successfully (mock mode)',
+        policy: {
+          id: policy._id,
+          weeklyPremium,
+          coverageAmount,
+          riskBreakdown: riskFactors,
+          coverageHours: policy.coverageHours,
+          startDate,
+          endDate,
+          status: 'active',
+          dataSource: 'mock-fallback',
+          registeredCity: user.city,
+          weatherCity: user.city,
+          locationVerification: { status: 'pending' },
+          vpnVerification: { status: 'pending' },
+          dynamicRisk: { riskScore: 45 }
+        }
+      });
+    }
+
     const user = await User.findById(userId);
 
     if (!user) {
@@ -112,6 +176,36 @@ exports.createPolicy = async (req, res) => {
 // Get active policy
 exports.getActivePolicy = async (req, res) => {
   try {
+    if (!isMongoConnected() && USE_MOCK_FALLBACK) {
+      const user = findUserById(req.userId);
+      if (!user) {
+        return res.status(404).json({ message: 'User not found' });
+      }
+
+      const policy = getPolicyByUserId(req.userId);
+      if (!policy) {
+        return res.status(404).json({ message: 'No active policy' });
+      }
+
+      const daysRemaining = Math.ceil((new Date(policy.endDate) - new Date()) / (1000 * 60 * 60 * 24));
+
+      return res.json({
+        policy: {
+          id: policy._id,
+          weeklyPremium: policy.weeklyPremium,
+          coverageAmount: policy.coverageAmount,
+          riskBreakdown: policy.riskBreakdown,
+          coverageHours: policy.coverageHours,
+          startDate: policy.startDate,
+          endDate: policy.endDate,
+          daysRemaining: Math.max(0, daysRemaining),
+          status: policy.status,
+          paymentStatus: policy.paymentStatus,
+          externalRiskContext: policy.externalRiskContext || { source: 'mock-fallback' }
+        }
+      });
+    }
+
     const user = await User.findById(req.userId).populate('activePolicy');
 
     if (!user || !user.activePolicy) {
@@ -162,6 +256,38 @@ exports.getActivePolicy = async (req, res) => {
 // Get policy breakdown
 exports.getPolicyBreakdown = async (req, res) => {
   try {
+    if (!isMongoConnected() && USE_MOCK_FALLBACK) {
+      const user = findUserById(req.userId);
+      const policy = getPolicyByUserId(req.userId);
+      if (!user || !policy) {
+        return res.status(404).json({ message: 'No active policy' });
+      }
+
+      const totalRisk = Object.values(policy.riskBreakdown || {}).reduce((a, b) => a + b, 0);
+      const weights = {
+        weatherRisk: 0.3,
+        pollutionRisk: 0.2,
+        demandRisk: 0.3,
+        locationRisk: 0.2
+      };
+
+      return res.json({
+        totalRiskScore: Math.round(totalRisk / 4),
+        riskFactors: Object.entries(policy.riskBreakdown || {}).map(([factor, value]) => ({
+          factor: factor.replace('Risk', ''),
+          score: value,
+          weight: ((weights[factor] || 0) * 100).toFixed(1) + '%',
+          contribution: Math.round((value * (weights[factor] || 0)) / 100)
+        })),
+        premiumCalculation: {
+          basePremium: 20,
+          riskMultiplier: (policy.weeklyPremium - 20) / 60,
+          finalPremium: `INR ${policy.weeklyPremium}`,
+          explanation: `Mock fallback mode for ${user.city}.`
+        }
+      });
+    }
+
     const user = await User.findById(req.userId).populate('activePolicy');
 
     if (!user || !user.activePolicy) {
@@ -204,6 +330,44 @@ exports.getPolicyBreakdown = async (req, res) => {
 exports.renewPolicy = async (req, res) => {
   try {
     const userId = req.userId;
+
+    if (!isMongoConnected() && USE_MOCK_FALLBACK) {
+      const user = findUserById(userId);
+      if (!user) {
+        return res.status(404).json({ message: 'User not found' });
+      }
+
+      const oldPolicy = getPolicyByUserId(userId);
+      const newPolicy = createMockPolicy({
+        userId,
+        weeklyPremium: oldPolicy?.weeklyPremium || 50,
+        coverageAmount: oldPolicy?.coverageAmount || 5000,
+        riskBreakdown: oldPolicy?.riskBreakdown || {
+          weatherRisk: 50,
+          pollutionRisk: 50,
+          demandRisk: 50,
+          locationRisk: 50
+        },
+        coverageHours: oldPolicy?.coverageHours || { start: 9, end: 22 },
+        startDate: new Date(),
+        endDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+        paymentStatus: 'paid',
+        externalRiskContext: { source: 'mock-fallback' }
+      });
+
+      updateUser(userId, { activePolicy: newPolicy._id });
+
+      return res.json({
+        message: 'Policy renewed (mock mode)',
+        policy: {
+          id: newPolicy._id,
+          weeklyPremium: newPolicy.weeklyPremium,
+          coverageAmount: newPolicy.coverageAmount,
+          startDate: newPolicy.startDate,
+          endDate: newPolicy.endDate
+        }
+      });
+    }
 
     const oldPolicy = await Policy.findOne({ userId, status: 'active' });
     if (oldPolicy) {

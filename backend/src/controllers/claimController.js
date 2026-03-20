@@ -1,7 +1,12 @@
 const Claim = require('../models/Claim');
 const User = require('../models/User');
+const mongoose = require('mongoose');
 const ClaimService = require('../services/claimService');
 const { checkTriggers, predictUpcomingDisruptions } = require('../services/weatherService');
+const { findUserById, getClaimsByUserId } = require('../mockDatabase');
+
+const USE_MOCK_FALLBACK = (process.env.USE_MOCK_DB_FALLBACK || 'true').toLowerCase() === 'true';
+const isMongoConnected = () => mongoose.connection.readyState === 1;
 
 const ensureAdmin = async (userId) => {
   const operator = await User.findById(userId);
@@ -48,6 +53,30 @@ exports.testTriggerClaim = async (req, res) => {
 // Get claim history
 exports.getClaimHistory = async (req, res) => {
   try {
+    if (!isMongoConnected() && USE_MOCK_FALLBACK) {
+      const claims = getClaimsByUserId(req.userId);
+      return res.json({
+        claims: claims.map((claim) => ({
+          id: claim._id,
+          triggerType: claim.triggerType || 'order_drop',
+          triggerValue: claim.triggerValue || 0,
+          timeWindow: claim.timeWindow,
+          expectedIncome: claim.expectedIncome || 0,
+          actualIncome: claim.actualIncome || 0,
+          calculatedLoss: claim.calculatedLoss || 0,
+          payoutAmount: claim.payoutAmount || 0,
+          fraudChecks: claim.fraudChecks || {},
+          fraudScore: claim.metadata?.truthEngine?.fraudScore,
+          truthDecision: claim.metadata?.truthEngine?.decision,
+          claimStatus: claim.claimStatus || 'paid',
+          fraudStatus: claim.fraudStatus || 'approved',
+          automationLog: claim.metadata?.automation?.processingLog || [],
+          createdAt: claim.createdAt,
+          resolvedAt: claim.resolvedAt
+        }))
+      });
+    }
+
     const claims = await ClaimService.getClaimHistory(req.userId);
 
     res.json({
@@ -172,7 +201,9 @@ exports.getPredictions = async (req, res) => {
       return res.status(400).json({ message: 'City parameter required' });
     }
 
-    const user = await User.findById(req.userId);
+    const user = (!isMongoConnected() && USE_MOCK_FALLBACK)
+      ? findUserById(req.userId)
+      : await User.findById(req.userId);
     const forecastResult = await predictUpcomingDisruptions(city, user);
     const predictions = forecastResult?.predictions || [];
 
