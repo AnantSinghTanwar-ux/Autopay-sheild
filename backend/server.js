@@ -23,9 +23,7 @@ const connectToDatabase = async () => {
       maxPoolSize: 10
     })
       .then(async (conn) => {
-        if ((process.env.NODE_ENV || 'development') === 'development') {
-          await seedDemoUsers();
-        }
+        await seedDemoUsers();
         return conn;
       })
       .catch((err) => {
@@ -38,7 +36,23 @@ const connectToDatabase = async () => {
 };
 
 // Middleware
-app.use(cors());
+const allowedOrigins = [
+  'http://localhost:5173',
+  'http://localhost:5174',
+  process.env.FRONTEND_URL,
+].filter(Boolean);
+
+app.use(cors({
+  origin: (origin, callback) => {
+    // Allow requests with no origin (mobile apps, curl, etc.)
+    if (!origin) return callback(null, true);
+    // Allow any vercel.app subdomain
+    if (origin.endsWith('.vercel.app')) return callback(null, true);
+    if (allowedOrigins.includes(origin)) return callback(null, true);
+    callback(null, true); // permissive for now
+  },
+  credentials: true
+}));
 app.use(express.json());
 
 // Ensure DB is ready before API routes in serverless/runtime contexts.

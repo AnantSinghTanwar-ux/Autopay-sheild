@@ -154,12 +154,25 @@ export const WorkerDashboard = () => {
             }));
           }
 
-          const nearestZone = updateRes?.data?.zoneSuggestion?.nearestZone?.zone;
-          setProfileMessage(
-            nearestZone
-              ? `GPS synced: ${gpsLocation.latitude.toFixed(5)}, ${gpsLocation.longitude.toFixed(5)}. Auto-selected nearest zone: ${nearestZone}`
-              : `GPS synced: ${gpsLocation.latitude.toFixed(5)}, ${gpsLocation.longitude.toFixed(5)}`
-          );
+          const zoneSuggestion = updateRes?.data?.zoneSuggestion;
+          const nearestZone = zoneSuggestion?.nearestZone?.zone;
+          const distanceKm = zoneSuggestion?.nearestZone?.distanceKm;
+          const nearestCity = zoneSuggestion?.nearestCity;
+          const suggestionMsg = zoneSuggestion?.message;
+
+          let msg = `📍 GPS synced: ${gpsLocation.latitude.toFixed(4)}, ${gpsLocation.longitude.toFixed(4)}`;
+          if (nearestZone) {
+            msg += ` → Nearest zone: ${nearestZone}`;
+            if (distanceKm != null) msg += ` (${distanceKm} km away)`;
+            msg += '. Auto-assigned to your profile.';
+          }
+          if (nearestCity && nearestCity.city) {
+            msg += ` | Closest city: ${nearestCity.city} (${nearestCity.distanceKm} km)`;
+          }
+          if (suggestionMsg && !msg.includes(suggestionMsg)) {
+            msg += ` — ${suggestionMsg}`;
+          }
+          setProfileMessage(msg);
 
           // Reload policy after location is captured to get updated verification status
           const policyRes = await policyAPI.getActivePolicy().catch(() => null);
@@ -698,7 +711,7 @@ export const WorkerDashboard = () => {
                     </div>
                     <div>
                       <p className="text-gray-600 text-sm mb-1">Coverage Hours</p>
-                      <p className="font-medium text-gray-900">{activePolicy.coverageHours.start}:00 - {activePolicy.coverageHours.end}:00</p>
+                      <p className="font-medium text-gray-900">{activePolicy.coverageHours?.start ?? '--'}:00 - {activePolicy.coverageHours?.end ?? '--'}:00</p>
                     </div>
                   </div>
 

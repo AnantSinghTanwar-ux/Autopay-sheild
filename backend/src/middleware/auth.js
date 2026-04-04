@@ -15,7 +15,7 @@ const authenticate = (req, res, next) => {
     const decoded = jwt.verify(token, JWT_SECRET);
 
     // Guard against stale tokens created before MongoDB migration (e.g., demo-user-1)
-    if (!USE_MOCK_FALLBACK && !mongoose.Types.ObjectId.isValid(decoded.userId)) {
+    if (!mongoose.Types.ObjectId.isValid(decoded.userId)) {
       return res.status(401).json({ message: 'Session expired. Please log in again.' });
     }
 
